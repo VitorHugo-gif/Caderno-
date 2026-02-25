@@ -287,7 +287,9 @@ input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:foc
 // ==========================================
 // SEÇÃO 1: CONFIGURAÇÃO E ESTADO
 // ==========================================
-const FILE_BASENAME = (()=>{ try{ const nm = decodeURIComponent((location.pathname.split('/').pop()||'caderno').replace(/\.[^.]+$/,'')); return nm || 'caderno'; }catch(e){ return 'caderno'; }})();
+const FILE_BASENAME = (()=>{
+  try{ const nm = decodeURIComponent((location.pathname.split('/') .pop() || 'caderno').replace(/\.[^.]+$/,'')); return nm || 'caderno'; }catch(e){ return 'caderno'; }
+})();
 const APP_INSTANCE_ID='inst-19c8a5acd05-2a8a119a';
 const STORAGE_PREFIX='cadpp-'+FILE_BASENAME.toLowerCase()+'-'+APP_INSTANCE_ID;
 const NOTEBOOKS_KEY=`${STORAGE_PREFIX}-notebooks`;
@@ -300,10 +302,151 @@ let currentNotebookId=null; let notebooks={}; let saveTimeout=null; let isEditin
 function generateId(){return 'nb-'+Date.now().toString(36)+'-'+Math.random().toString(36).substr(2,5)}
 function showSaveStatus(m,e=false){const s=document.getElementById('saveStatus'); s.textContent=m; s.className='save-status visible'+(e?' error':' saved'); setTimeout(()=>s.classList.remove('visible'),1800)}
 function hexToRgb(hex){hex=String(hex||'').replace('#',''); if(hex.length===3) hex=[...hex].map(c=>c+c).join(''); const n=parseInt(hex,16); if(isNaN(n)) return null; return {r:(n>>16)&255,g:(n>>8)&255,b:n&255}}
-function sanitizeHTML(html){const tpl=document.createElement('template'); tpl.innerHTML=html; const dis=['SCRIPT','STYLE']; const w=document.createTreeWalker(tpl.content, NodeFilter.SHOW_ELEMENT, null); const rem=[]; while(w.nextNode()){const el=w.currentNode; if(dis.includes(el.tagName)){rem.push(el); continue;} [...el.attributes].forEach(a=>{const name=a.name.toLowerCase(); const val=(a.value||'').trim().toLowerCase(); if(name.startsWith('on')||val.startsWith('javascript:')) el.removeAttribute(a.name)});} rem.forEach(n=>n.remove()); return tpl.innerHTML}
-
+function sanitizeHTML(html){
+  const tpl=document.createElement('template');
+  tpl.innerHTML=html;
+  const dis=['SCRIPT','STYLE'];
+  const w=document.createTreeWalker(tpl.content, NodeFilter.SHOW_ELEMENT, null);
+  const rem=[];
+  while(w.nextNode()){
+    const el=w.currentNode;
+    if(dis.includes(el.tagName)){ rem.push(el); continue; }
+    [...el.attributes].forEach(a=>{
+      const name=a.name.toLowerCase();
+      const val=(a.value||'').trim().toLowerCase();
+      if(name.startsWith('on') || val.startsWith('javascript:')) el.removeAttribute(a.name);
+    });
+  }
+  rem.forEach(n=>n.remove());
+  return tpl.innerHTML;
+}
 function updateDerivedColors(){const root=document.documentElement; const p2=getComputedStyle(root).getPropertyValue('--panel-2').trim(); const rgb=hexToRgb(p2)||{r:27,g:32,b:48}; root.style.setProperty('--panel-glass',`rgba(${rgb.r},${rgb.g},${rgb.b},0.38)`); const acc=getComputedStyle(root).getPropertyValue('--accent').trim(); const accRgb=hexToRgb(acc)||{r:106,g:176,b:255}; root.style.setProperty('--read-along-bg',`rgba(${accRgb.r},${accRgb.g},${accRgb.b},0.12)`); root.style.setProperty('--accent-ring',`rgba(${accRgb.r},${accRgb.g},${accRgb.b},0.25)`); root.style.setProperty('--input-bg',`rgba(${accRgb.r},${accRgb.g},${accRgb.b},0.08)`); root.style.setProperty('--input-border',`rgba(${accRgb.r},${accRgb.g},${accRgb.b},0.25)`)}
 
+
+// ==========================================
+// SEÇÃO 2.5: STORAGE (IndexedDB com fallback para localStorage)
+// ==========================================
+class DB {
+  constructor(dbName = STORAGE_PREFIX + '-db', version = 1) {
+    this.dbName = dbName;
+    this.version = version;
+    this.db = null;
+    this.disabled = false; // ativa fallback quando true
+  }
+  init() {
+    return new Promise((resolve) => {
+      if (!('indexedDB' in window)) {
+        console.warn('[Caderno++] IndexedDB indisponível, usando localStorage.');
+        this.disabled = true;
+        return resolve();
+      }
+      const req = indexedDB.open(this.dbName, this.version);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains('notebooks')) {
+          db.createObjectStore('notebooks', { keyPath: 'id' });
+        }
+        if (!db.objectStoreNames.contains('settings')) {
+          db.createObjectStore('settings', { keyPath: 'key' });
+        }
+      };
+      req.onsuccess = () => { this.db = req.result; resolve(); };
+      req.onerror = () => {
+        console.warn('[Caderno++] Falha ao abrir IndexedDB. Fallback para localStorage.', req.error);
+        this.disabled = true;
+        resolve();
+      };
+    });
+  }
+  _store(name, mode='readonly') {
+    return this.db.transaction(name, mode).objectStore(name);
+  }
+  getAll(store) {
+    if (this.disabled) {
+      try {
+        if (store === 'notebooks') {
+          const raw = localStorage.getItem(NOTEBOOKS_KEY);
+          if (!raw) return Promise.resolve([]);
+          const obj = JSON.parse(raw);
+          return Promise.resolve(Object.values(obj));
+        } else if (store === 'settings') {
+          const active = localStorage.getItem(ACTIVE_NOTEBOOK_KEY);
+          return Promise.resolve(active ? [{key:'active', value:active}] : []);
+        }
+      } catch {}
+      return Promise.resolve([]);
+    }
+    return new Promise((resolve, reject) => {
+      const req = this._store(store).getAll();
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = () => reject(req.error);
+    });
+  }
+  get(store, key) {
+    if (this.disabled) {
+      try {
+        if (store === 'notebooks') {
+          const obj = JSON.parse(localStorage.getItem(NOTEBOOKS_KEY) || '{}');
+          return Promise.resolve(obj[key] || null);
+        } else if (store === 'settings') {
+          const v = localStorage.getItem(ACTIVE_NOTEBOOK_KEY);
+          return Promise.resolve(key === 'active' && v ? {key:'active', value:v} : null);
+        }
+      } catch {}
+      return Promise.resolve(null);
+    }
+    return new Promise((resolve, reject) => {
+      const req = this._store(store).get(key);
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => reject(req.error);
+    });
+  }
+  put(store, value) {
+    if (this.disabled) {
+      try {
+        if (store === 'notebooks') {
+          const obj = JSON.parse(localStorage.getItem(NOTEBOOKS_KEY) || '{}');
+          obj[value.id] = value;
+          localStorage.setItem(NOTEBOOKS_KEY, JSON.stringify(obj));
+        } else if (store === 'settings' && value && value.key) {
+          if (value.key === 'active') localStorage.setItem(ACTIVE_NOTEBOOK_KEY, value.value);
+        }
+      } catch {}
+      return Promise.resolve();
+    }
+    return new Promise((resolve, reject) => {
+      const req = this._store(store, 'readwrite').put(value);
+      req.onsuccess = () => resolve();
+      req.onerror = () => reject(req.error);
+    });
+  }
+  delete(store, key) {
+    if (this.disabled) {
+      try {
+        if (store === 'notebooks') {
+          const obj = JSON.parse(localStorage.getItem(NOTEBOOKS_KEY) || '{}');
+          if (key in obj) {
+            delete obj[key];
+            localStorage.setItem(NOTEBOOKS_KEY, JSON.stringify(obj));
+          }
+        }
+      } catch {}
+      return Promise.resolve();
+    }
+    return new Promise((resolve, reject) => {
+      const req = this._store(store, 'readwrite').delete(key);
+      req.onsuccess = () => resolve();
+      req.onerror = () => reject(req.error);
+    });
+  }
+  setActive(id) { return this.put('settings', { key:'active', value:id }); }
+  async getActive() {
+    const s = await this.get('settings', 'active');
+    return s ? s.value : null;
+  }
+}
+
+const db = new DB();
 // ==========================================
 // SEÇÃO 3: EXPORTAÇÃO MARKDOWN (sem dependências)
 // ==========================================
@@ -474,13 +617,128 @@ function buildThemePanel(){const g=document.querySelector('.theme-grid'); if(!g)
 // ==========================================
 // SEÇÃO 5: GERENCIAMENTO DE CADERNOS
 // ==========================================
-function initNotebooks(){const saved=localStorage.getItem(NOTEBOOKS_KEY); const active=localStorage.getItem(ACTIVE_NOTEBOOK_KEY); if(saved){ notebooks=JSON.parse(saved);} else {const id=generateId(); notebooks[id]={id,name:'Meu Primeiro Caderno',theme:'Roxo/Azul',created:Date.now(),modified:Date.now(),content:document.getElementById('mainArticle').innerHTML,prefs:{showTexto:true,showResumo:false,showPerguntasResp:false,readAlong:true,voice:null,rate:1,pitch:1}}; currentNotebookId=id; saveNotebooks(); } if(active && notebooks[active]) currentNotebookId=active; else currentNotebookId=Object.keys(notebooks)[0]; renderNotebookSelector(); loadCurrentNotebook(); }
-function saveNotebooks(){try{localStorage.setItem(NOTEBOOKS_KEY, JSON.stringify(notebooks)); localStorage.setItem(ACTIVE_NOTEBOOK_KEY,currentNotebookId); showSaveStatus('Salvo ✓');}catch(e){showSaveStatus('Erro ao salvar!',true);}}
-function createNotebook(name){const id=generateId(); const now=Date.now(); const tpl=`\n<section class=\"chapter\" id=\"cap-${now}\">\n  <h1 data-placeholder=\"Clique para editar o título...\">${name}</h1>\n  <div class=\"layer-texto\" data-placeholder=\"Comece a escrever aqui...\"><p>Novo caderno criado em ${(new Date()).toLocaleDateString('pt-BR')}.</p></div>\n  <div class=\"layer-resumo\" data-placeholder=\"Adicione um resumo...\"></div>\n  <div class=\"layer-perguntas-respostas\" data-placeholder=\"Adicione perguntas de estudo...\"></div>\n</section>\n<div class=\"footer\">Caderno++</div>`; notebooks[id]={id,name,theme:'Roxo/Azul',created:now,modified:now,content:tpl,prefs:{showTexto:true,showResumo:false,showPerguntasResp:false,readAlong:true,voice:null,rate:1,pitch:1}}; currentNotebookId=id; saveNotebooks(); renderNotebookSelector(); loadCurrentNotebook(); showSaveStatus('Novo caderno criado');}
-function renameCurrentNotebook(newName){ if(!currentNotebookId) return; if(!newName || !newName.trim()) return; notebooks[currentNotebookId].name=newName.trim(); notebooks[currentNotebookId].modified=Date.now(); saveNotebooks(); renderNotebookSelector(); document.getElementById('notebookSelect').value=currentNotebookId; updateNotebookMeta(); showSaveStatus('Caderno renomeado ✓'); }
-function deleteCurrentNotebook(){ if(Object.keys(notebooks).length<=1){alert('Você precisa manter pelo menos um caderno!'); return;} if(!confirm(`Excluir "${notebooks[currentNotebookId].name}"? Esta ação não pode ser desfeita.`)) return; delete notebooks[currentNotebookId]; currentNotebookId=Object.keys(notebooks)[0]; saveNotebooks(); renderNotebookSelector(); loadCurrentNotebook(); showSaveStatus('Caderno excluído'); }
-function switchNotebook(id){ if(id===currentNotebookId) return; saveCurrentContent(); currentNotebookId=id; localStorage.setItem(ACTIVE_NOTEBOOK_KEY,id); loadCurrentNotebook(); }
-function saveCurrentContent(){ if(!currentNotebookId) return; const art=document.getElementById('mainArticle'); const safe=sanitizeHTML(art.innerHTML); notebooks[currentNotebookId].content=safe; notebooks[currentNotebookId].modified=Date.now(); const p=getLayerPrefs(); notebooks[currentNotebookId].prefs={...p, voice:getSelectedVoiceName(), rate:getRate(), pitch:getPitch()}; saveNotebooks(); }
+
+
+async function initNotebooks(){
+  await db.init();
+  // Tenta carregar do IndexedDB primeiro
+  let savedList = await db.getAll('notebooks');
+  notebooks = {};
+  if (savedList && savedList.length) {
+    savedList.forEach(nb => notebooks[nb.id] = nb);
+  } else {
+    // MIGRAÇÃO: se houver dados no localStorage antigo, migra para IndexedDB
+    try {
+      const lsRaw = localStorage.getItem(NOTEBOOKS_KEY);
+      if (lsRaw) {
+        const obj = JSON.parse(lsRaw);
+        if (obj && typeof obj === 'object') {
+          notebooks = obj;
+          await saveNotebooks(); // persiste em IndexedDB
+        }
+      }
+    } catch {}
+  }
+  // Se ainda vazio, cria notebook padrão a partir do artigo atual
+  if (!Object.keys(notebooks).length) {
+    const id = generateId();
+    notebooks[id] = {id, name:'Meu Primeiro Caderno', theme:'Roxo/Azul', created:Date.now(), modified:Date.now(), content:document.getElementById('mainArticle').innerHTML, prefs:{showTexto:true,showResumo:false,showPerguntasResp:false,readAlong:true,voice:null,rate:1,pitch:1}};
+    currentNotebookId = id;
+    await saveNotebooks();
+  }
+  let active = await db.getActive();
+  if (!active) {
+    // tenta recuperar do localStorage antigo
+    active = localStorage.getItem(ACTIVE_NOTEBOOK_KEY) || null;
+    if (active) await db.setActive(active);
+  }
+  if (active && notebooks[active]) currentNotebookId = active; else currentNotebookId = Object.keys(notebooks)[0];
+  renderNotebookSelector();
+  loadCurrentNotebook();
+}
+async function saveNotebooks(){
+  try{
+    // Apaga registros órfãos e salva os atuais
+    const existing = await db.getAll('notebooks');
+    const existingIds = new Set((existing||[]).map(n=>n.id));
+    const currentIds = new Set(Object.keys(notebooks));
+    // remove órfãos
+    for (const id of existingIds) {
+      if (!currentIds.has(id)) await db.delete('notebooks', id);
+    }
+    // salva todos
+    for (const nb of Object.values(notebooks)) {
+      await db.put('notebooks', nb);
+    }
+    if (currentNotebookId) await db.setActive(currentNotebookId);
+    showSaveStatus('Salvo ✓');
+  }catch(e){
+    console.error(e);
+    showSaveStatus('Erro ao salvar!',true);
+  }
+}
+
+async function createNotebook(name){
+  const id=generateId();
+  const now=Date.now();
+  const tpl=`
+<section class="chapter" id="cap-${now}">
+ <h1 data-placeholder="Clique para editar o título...">${name}</h1>
+ <div class="layer-texto" data-placeholder="Comece a escrever aqui..."><p>Novo caderno criado em ${(new Date()).toLocaleDateString('pt-BR')}.</p></div>
+ <div class="layer-resumo" data-placeholder="Adicione um resumo..."></div>
+ <div class="layer-perguntas-respostas" data-placeholder="Adicione perguntas de estudo..."></div>
+</section>
+<div class="footer">Caderno++</div>`;
+  notebooks[id]={id,name,theme:'Roxo/Azul',created:now,modified:now,content:tpl,prefs:{showTexto:true,showResumo:false,showPerguntasResp:false,readAlong:true,voice:null,rate:1,pitch:1}};
+  currentNotebookId=id;
+  await saveNotebooks();
+  renderNotebookSelector();
+  loadCurrentNotebook();
+  showSaveStatus('Novo caderno criado');
+}
+
+async function renameCurrentNotebook(newName){
+  if(!currentNotebookId) return;
+  if(!newName || !newName.trim()) return;
+  notebooks[currentNotebookId].name=newName.trim();
+  notebooks[currentNotebookId].modified=Date.now();
+  await saveNotebooks();
+  renderNotebookSelector();
+  document.getElementById('notebookSelect').value=currentNotebookId;
+  updateNotebookMeta();
+  showSaveStatus('Caderno renomeado ✓');
+}
+
+async function deleteCurrentNotebook(){
+  if(Object.keys(notebooks).length<=1){alert('Você precisa manter pelo menos um caderno!'); return;}
+  if(!confirm(`Excluir "${notebooks[currentNotebookId].name}"? Esta ação não pode ser desfeita.`)) return;
+  const toDelete = currentNotebookId;
+  delete notebooks[currentNotebookId];
+  currentNotebookId=Object.keys(notebooks)[0];
+  await saveNotebooks();
+  renderNotebookSelector();
+  loadCurrentNotebook();
+  showSaveStatus('Caderno excluído');
+}
+
+async function switchNotebook(id){
+  if(id===currentNotebookId) return;
+  await saveCurrentContent();
+  currentNotebookId=id;
+  await db.setActive(id);
+  loadCurrentNotebook();
+}
+
+async function saveCurrentContent(){
+  if(!currentNotebookId) return;
+  const art=document.getElementById('mainArticle');
+  const safe=sanitizeHTML(art.innerHTML);
+  notebooks[currentNotebookId].content=safe;
+  notebooks[currentNotebookId].modified=Date.now();
+  const p=getLayerPrefs();
+  notebooks[currentNotebookId].prefs={...p, voice:getSelectedVoiceName(), rate:getRate(), pitch:getPitch()};
+  await saveNotebooks();
+}
 function loadCurrentNotebook(){ const nb=notebooks[currentNotebookId]; if(!nb) return; document.getElementById('mainArticle').innerHTML=nb.content; applyTheme(nb.theme); document.getElementById('notebookSelect').value=currentNotebookId; updateNotebookMeta(); rebuildTOC(); initEditing(); initTTS(); applyLayerPrefs(); updateVoiceUIFromPrefs(); }
 function updateNotebookMeta(){ const nb=notebooks[currentNotebookId]; const meta=document.getElementById('notebookMeta'); const date=new Date(nb.modified).toLocaleString('pt-BR'); meta.textContent=`Modificado: ${date} • Tema: ${nb.theme}`; }
 function renderNotebookSelector(){ const s=document.getElementById('notebookSelect'); s.innerHTML=''; Object.values(notebooks).forEach(nb=>{ const o=document.createElement('option'); o.value=nb.id; o.textContent=nb.name; s.appendChild(o); }); s.value=currentNotebookId; }
@@ -504,8 +762,8 @@ function triggerAutoSave(){ clearTimeout(saveTimeout); saveTimeout=setTimeout(()
 // ==========================================
 // SEÇÃO 7: TTS E ÁUDIO (com leitura acompanhada fix)
 // ==========================================
-function getRate(){ return parseFloat(document.getElementById('rateRange')?.value||'1'); }
-function getPitch(){ return parseFloat(document.getElementById('pitchRange')?.value||'1'); }
+function getRate(){ return parseFloat(document.getElementById('rateRange')?.value ?? '1'); }
+function getPitch(){ return parseFloat(document.getElementById('pitchRange')?.value ?? '1'); }
 function getSelectedVoiceName(){ const s=document.getElementById('voiceSelect'); return s?.value||null; }
 function getSelectedVoice(){ const name=getSelectedVoiceName(); const voices=window.speechSynthesis.getVoices().filter(v=> v.lang && v.lang.toLowerCase().startsWith('pt')); if(!voices.length) return null; if(name){ const v=voices.find(v=> v.name===name); if(v) return v; } return voices[0]; }
 function updateVoiceHint(){ const h=document.getElementById('voiceHint'); const v=getSelectedVoice(); h.textContent = v ? `Voz: ${v.name} (${v.lang})` : 'Nenhuma voz PT encontrada.'; }
@@ -513,8 +771,16 @@ function updateVoiceHint(){ const h=document.getElementById('voiceHint'); const 
 // Limpa todos os destaques de leitura
 function clearAllReadAlongHighlights(){ document.querySelectorAll('.read-along-active').forEach(el=> el.classList.remove('read-along-active')); }
 
-function loadVoices(){ const voices=window.speechSynthesis.getVoices(); const pt=voices.filter(v=> v.lang && v.lang.toLowerCase().startsWith('pt')); const s=document.getElementById('voiceSelect'); if(!s) return; const prev=getSelectedVoiceName() || notebooks[currentNotebookId]?.prefs?.voice || null; s.innerHTML=''; pt.forEach(v=>{ const o=document.createElement('option'); o.value=v.name; o.textContent=`${v.name} (${v.lang})`; s.appendChild(o); }); if(prev){ const m=pt.find(v=> v.name===prev); if(m) s.value=prev; } updateVoiceHint(); }
-
+function loadVoices(){
+  const voices=window.speechSynthesis.getVoices();
+  const pt=voices.filter(v=> v.lang && v.lang.toLowerCase().startsWith('pt'));
+  const s=document.getElementById('voiceSelect'); if(!s) return;
+  const prev = getSelectedVoiceName() || notebooks[currentNotebookId]?.prefs?.voice || null;
+  s.innerHTML='';
+  pt.forEach(v=>{ const o=document.createElement('option'); o.value=v.name; o.textContent=`${v.name} (${v.lang})`; s.appendChild(o); });
+  if(prev){ const m=pt.find(v=> v.name===prev); if(m) s.value=prev; }
+  updateVoiceHint();
+}
 function chapterTextForTTS(ch){ const parts=[]; ch.querySelectorAll('h1, h2, p, li').forEach(el=>{ const t=el.innerText.trim(); if(t) parts.push(t); }); return parts.join('\n'); }
 
 function speakChapterWithHighlight(ch){ 
@@ -661,7 +927,14 @@ function bindLayerToggles(){
   }); 
 }
 
-function ensureChapterIds(){ document.querySelectorAll('.chapter').forEach((ch,i)=>{ if(!ch.id){ const base=(ch.querySelector('h1')?.textContent||'capitulo').trim().toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9\-]/g,'').slice(0,40) || ('cap-'+Date.now()); ch.id=base || ('cap-'+Date.now()); } }); }
+function ensureChapterIds(){
+  document.querySelectorAll('.chapter').forEach((ch,i)=>{
+    if(!ch.id){
+      const base=(ch.querySelector('h1')?.textContent || 'capitulo').trim().toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9\-]/g,'').slice(0,40) || ('cap-'+Date.now());
+      ch.id= base || ('cap-'+Date.now());
+    }
+  });
+}
 function deleteChapterById(id){ const chapters=document.querySelectorAll('.chapter'); if(chapters.length<=1){ alert('Mantenha pelo menos um capítulo.'); return; } const ch=document.getElementById(id); if(!ch) return; if(!confirm('Excluir este capítulo?')) return; ch.remove(); rebuildTOC(); saveCurrentContent(); }
 function rebuildTOC(){ const toc=document.querySelector('.toc'); if(!toc) return; toc.innerHTML=''; ensureChapterIds(); const chapters=[...document.querySelectorAll('.chapter h1')]; chapters.forEach((h1,idx)=>{ const ch=h1.closest('.chapter'); const id=ch.id; const title=(h1.textContent||'Capítulo sem título').trim(); const a=document.createElement('a'); a.href='#'+id; a.innerHTML=`<span class="badge" aria-hidden="true"></span> <span>${title}</span>`; const li=document.createElement('li'); const btn=document.createElement('button'); btn.className='del-ch'; btn.setAttribute('title','Excluir capítulo'); btn.setAttribute('aria-label','Excluir capítulo'); btn.textContent='×'; btn.addEventListener('click',(e)=>{ e.preventDefault(); deleteChapterById(id); }); li.appendChild(a); li.appendChild(btn); toc.appendChild(li); a.addEventListener('click',(e)=>{ e.preventDefault(); document.getElementById(id)?.scrollIntoView({behavior:'smooth',block:'start'}); }); }); }
 function addChapter(){ const id='cap-'+Date.now(); const s=document.createElement('section'); s.className='chapter'; s.id=id; s.innerHTML=`\n  <h1 data-placeholder=\"Clique para editar o título...\">Novo Capítulo</h1>\n  <div class=\"layer-texto\" data-placeholder=\"Clique aqui para começar a escrever...\"><p>Comece a escrever seu conteúdo aqui...</p></div>\n  <div class=\"layer-resumo\" data-placeholder=\"Clique para adicionar um resumo deste capítulo...\"></div>\n  <div class=\"layer-perguntas-respostas\" data-placeholder=\"Clique para adicionar perguntas e respostas de estudo...\"></div>\n`; const f=document.querySelector('.footer'); document.getElementById('mainArticle').insertBefore(s,f); initEditing(); initTTS(); rebuildTOC(); saveCurrentContent(); s.scrollIntoView({ behavior:'smooth', block:'start' }); }
@@ -696,8 +969,8 @@ function importNotebooks(file){ const reader=new FileReader(); reader.onload=()=
 // ==========================================
 // SEÇÃO 10: INICIALIZAÇÃO
 // ==========================================
-document.addEventListener('DOMContentLoaded', ()=>{ 
-  initNotebooks(); 
+document.addEventListener('DOMContentLoaded', async () => { 
+  await initNotebooks(); 
   initEditing(); 
   initFormatToolbar(); 
   bindLayerToggles(); 
