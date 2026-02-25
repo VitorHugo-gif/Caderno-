@@ -1,0 +1,742 @@
+<!doctype html>
+<html lang="pt-BR" data-app-instance="inst-19c8a5acd05-2a8a119a">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Caderno++ — Editor de Estudos (v2.3.3)</title>
+<meta name="description" content="Caderno de estudos portátil, editável, com TTS e backup."/>
+<style>
+:root{
+  --bg:#0f1115; --panel:#161925; --panel-2:#1b2030; --text:#E6E6E6; --muted:#9aa4b2;
+  --accent:#6ab0ff; --accent-2:#8f7aff; --border:#2a3246; --code-bg:#0b0d12;
+  --shadow: 0 10px 30px rgba(0,0,0,.4); --bg-2:#0b0c10; --heading-2:#d8ddf2; --heading-3:#c7d0ea;
+  --accent-hover-1:#79b8ff; --accent-hover-2:#9b88ff; --on-accent:#0b0c10;
+  --read-along-bg: rgba(122,122,255,0.12); --panel-glass: rgba(27,32,48,0.38);
+  --accent-ring: rgba(106,176,255,.25);
+  --input-bg: rgba(106,176,255,.08);
+  --input-border: rgba(106,176,255,.25);
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+html{scroll-behavior:smooth}
+body{margin:0;display:flex;color:var(--text);background:linear-gradient(180deg,var(--bg),var(--bg-2) 60%);font:16px/1.6 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,"Noto Sans",sans-serif}
+/* ===== SIDEBAR ===== */
+.sidebar{width:300px;background:var(--panel);padding:18px 14px;position:sticky;top:0;height:100vh;overflow:auto;border-right:none!important}
+.sidebar::after{content:"";position:absolute;top:0;right:0;width:6px;height:100%;background:linear-gradient(180deg,var(--accent),var(--accent-2),var(--accent));border-radius:3px;opacity:.6;box-shadow:inset 0 0 4px rgba(0,0,0,.3),0 0 15px var(--accent-ring);pointer-events:none}
+.sidebar::-webkit-scrollbar{width:10px;height:10px}
+.sidebar::-webkit-scrollbar-track{background:var(--panel-2);border-radius:10px;border:1px solid var(--border)}
+.sidebar::-webkit-scrollbar-thumb{background:linear-gradient(180deg,var(--accent),var(--accent-2));border-radius:10px;border:2px solid var(--panel-2);box-shadow:inset 0 0 4px rgba(0,0,0,.2)}
+.sidebar::-webkit-scrollbar-thumb:hover{background:linear-gradient(180deg,var(--accent-hover-1),var(--accent-hover-2))}
+
+/* ===== MAIN ===== */
+.main{flex:1;overflow:auto;padding:28px}
+.article{max-width:980px;margin:0 auto;background:var(--panel-glass);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow)}
+.article .section{padding:24px 26px}
+.article .section + .section{border-top:1px solid var(--border)}
+h1{font-size:28px;margin:8px 0 12px;color:var(--text)}
+h2{font-size:22px;margin:24px 0 8px;color:var(--heading-2)}
+h3{font-size:18px;margin:18px 0 6px;color:var(--heading-3)}
+p{margin:10px 0}
+ul{padding-left:22px}
+code{background:var(--code-bg);border:1px solid var(--border);padding:2px 6px;border-radius:6px}
+pre{background:var(--code-bg);border:1px solid var(--border);padding:12px 14px;border-radius:12px;overflow:auto}
+
+/* ===== EDIÇÃO ===== */
+[contenteditable="true"]{outline:2px solid var(--accent);background:var(--input-bg);border-radius:4px;padding:2px 4px;cursor:text}
+[contenteditable="true"]:focus{outline:2px solid var(--accent-2);box-shadow:0 0 0 2px var(--accent-ring)}
+[contenteditable="true"]:empty:before,.layer-resumo:empty:before,.layer-perguntas-respostas:empty:before{content:attr(data-placeholder);color:var(--muted);font-style:italic;display:block;pointer-events:none}
+[contenteditable="true"]:not(:empty):before,.layer-resumo:not(:empty):before,.layer-perguntas-respostas:not(:empty):before{display:none}
+
+/* ===== TOOLBAR ===== */
+.format-toolbar{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);display:none;background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:12px 14px;gap:10px;box-shadow:var(--shadow);z-index:1000;align-items:center;flex-wrap:wrap}
+.format-toolbar.visible{display:flex}
+.format-toolbar button{background:var(--panel-2);border:1px solid var(--border);color:var(--text);border-radius:8px;width:auto;padding:8px 12px;white-space:nowrap;font-weight:600;height:36px;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;transition:all .15s ease}
+.format-toolbar button:hover{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
+.format-toolbar button.active{background:var(--accent-2);color:var(--on-accent);border-color:var(--accent-2)}
+.format-toolbar .sep{width:1px;height:24px;background:var(--border);margin:0 4px}
+
+/* ===== SELETOR DE CADERNO ===== */
+.notebook-selector{margin-bottom:14px;padding:10px;background:var(--panel-2);border:1px solid var(--border);border-radius:10px}
+.notebook-selector label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px;font-weight:600}
+.notebook-controls{display:flex;gap:6px;margin-bottom:8px}
+#notebookSelect{flex:1;background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px 36px 8px 10px;font-size:13px;appearance:none;-webkit-appearance:none;-moz-appearance:none;background-image: linear-gradient(45deg, transparent 50%, var(--text) 50%), linear-gradient(135deg, var(--text) 50%, transparent 50%), linear-gradient(90deg, var(--panel) 0, var(--panel) 100%);background-position: calc(100% - 20px) calc(50% + 2px), calc(100% - 14px) calc(50% + 2px), 100% 0;background-size: 6px 6px, 6px 6px, 2.5em 100%;background-repeat: no-repeat}
+#notebookSelect option, #voiceSelect option {background:var(--panel);color:var(--text)}
+#notebookSelect option:checked, #voiceSelect option:checked {background:var(--panel-2);color:var(--text)}
+
+.notebook-controls button{background:linear-gradient(135deg,var(--accent),var(--accent-2));color:var(--on-accent);border:none;border-radius:8px;width:32px;cursor:pointer;font-size:16px}
+#newNotebookName,#renameNotebookName{width:100%;background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px;font-size:13px;display:none}
+.notebook-meta{font-size:11px;color:var(--muted);margin-top:6px}
+
+/* ===== SAVE STATUS ===== */
+.save-status{position:fixed;top:20px;right:20px;background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:8px 14px;font-size:12px;color:var(--muted);opacity:0;transition:opacity .3s ease;z-index:1000}
+.save-status.visible{opacity:1}
+.save-status.saved{color:var(--accent)}
+.save-status.error{color:#ff6b6b}
+
+/* ===== CONTROLS ===== */
+.controls{margin-top:12px;padding:10px;background:var(--panel-2);border:1px solid var(--border);border-radius:10px}
+.controls label{font-size:12px;color:var(--muted);display:block;margin-bottom:4px}
+.controls select,.controls input[type=range]{width:100%}
+.controls input[type=range]{margin-top:4px}
+.controls .row{margin-top:10px}
+.controls .row .small{display:flex;justify-content:space-between;font-size:12px;color:var(--muted)}
+.controls .hint{font-size:12px;color:var(--muted);margin-top:6px}
+
+/* Campos derivados da matriz */
+.search input[type="search"], #voiceSelect, #newNotebookName, #renameNotebookName, #rateRange, #pitchRange{background:var(--input-bg)!important;border:1px solid var(--input-border)!important;color:var(--text)!important;border-radius:8px;padding:8px}
+.search input[type="search"]:focus,#voiceSelect:focus,#notebookSelect:focus,#newNotebookName:focus,#renameNotebookName:focus{outline:2px solid var(--accent);border-color:var(--accent)!important;box-shadow:0 0 0 2px var(--accent-ring)}
+
+.chapter-toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:8px 0 10px}
+.chapter-toolbar button{background:linear-gradient(135deg,var(--accent),var(--accent-2));color:var(--on-accent);font-weight:700;border:none;border-radius:10px;padding:8px 12px;cursor:pointer}
+.chapter-toolbar button.secondary{background:var(--panel-2);color:var(--text);border:1px solid var(--border);font-weight:600}
+.chapter-toolbar .status{font-size:12px;color:var(--muted)}
+.footer{padding:16px 26px;color:var(--muted);font-size:12px}
+
+/* ===== TEMAS ===== */
+.theme-panel[data-hidden]{display:none}
+.theme-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+@media (min-width:1100px){.theme-grid{grid-template-columns:repeat(6,minmax(0,1fr))}}
+.theme-chip{display:flex;align-items:center;justify-content:center;padding:6px;border-radius:8px;border:1px solid var(--border);background:var(--panel-2);color:var(--text);cursor:pointer;aspect-ratio:1/1}
+.theme-chip .swatch{width:100%;height:100%;border-radius:6px;box-shadow:var(--shadow);border:1px solid var(--border)}
+.theme-chip .label{display:none}
+
+input[type="checkbox"]{accent-color:var(--accent)}
+input[type="checkbox"]:hover{accent-color:var(--accent-hover-2)}
+input[type=range]{-webkit-appearance:none;width:100%;background:transparent;height:24px}
+input[type=range]::-webkit-slider-runnable-track{height:6px;background:var(--panel-2);border:1px solid var(--border);border-radius:999px}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;margin-top:-6px;width:18px;height:18px;border-radius:50%;border:2px solid var(--border);background:linear-gradient(135deg,var(--accent),var(--accent-2));box-shadow:0 0 0 2px rgba(0,0,0,.12);cursor:pointer}
+
+/* ===== CAMADAS ===== */
+[data-layer-hidden]{display:none!important}
+.slot-title{margin:12px 0 6px;font-size:14px;color:var(--muted);font-weight:700;letter-spacing:.2px}
+.layer-resumo,.layer-perguntas-respostas{border:1px dashed var(--border);border-radius:8px;padding:12px;margin:10px 0;min-height:60px;box-shadow:var(--shadow);background:rgba(255,255,255,0.02)}
+.read-along-active{background:var(--read-along-bg)!important;border-radius:6px;transition: background 0.2s ease}
+
+/* ===== RESPONSIVO ===== */
+@media (max-width:980px){
+  .sidebar{position:fixed;left:0;top:0;bottom:0;z-index:3;transform:translateX(-100%);transition:transform .2s ease}
+  .sidebar.open{transform:translateX(0)}
+  .main{padding-top:56px}
+  .topbar{position:fixed;left:0;top:0;right:0;height:48px;background:var(--panel);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;padding:0 12px;z-index:4}
+  .hamburger{width:28px;height:28px;border-radius:8px;background:var(--panel-2);border:1px solid var(--border)}
+  .format-toolbar{bottom:10px;left:10px;right:10px;transform:none}
+}
+
+/* ===== TOC ===== */
+.toc{list-style:none;padding-left:0;display:flex;flex-direction:column;gap:6px}
+.toc li{display:flex;align-items:center;gap:8px}
+.toc li a{flex:1;display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--border);border-radius:10px;background:var(--panel-2);color:var(--text);text-decoration:none;transition:transform .08s ease, background .15s ease, border-color .15s ease, box-shadow .15s ease}
+.toc li a:hover{transform:translateX(2px);background:var(--panel);border-color:var(--accent)}
+.toc li a .badge{width:8px;height:8px;border-radius:999px;display:inline-block;background:linear-gradient(135deg,var(--accent),var(--accent-2));box-shadow:0 0 0 1px rgba(0,0,0,.25)}
+.toc li a.active{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent-ring) inset}
+
+/* Botão novo capítulo */
+.chapter-actions button#btnNewChapter{display:flex;align-items:center;justify-content:center;gap:10px;padding:10px 14px;border-radius:12px;font-weight:800;letter-spacing:.2px;background:linear-gradient(135deg,var(--accent),var(--accent-2));color:var(--on-accent);border:none;box-shadow:var(--shadow);transition:transform .08s ease,filter .15s ease,box-shadow .2s ease}
+.chapter-actions button#btnNewChapter:hover{transform:translateY(-1px);filter:brightness(1.05);box-shadow:0 8px 24px var(--accent-ring)}
+.chapter-actions button#btnNewChapter:active{transform:translateY(0);filter:brightness(.98)}
+
+/* Botão excluir capítulo */
+.toc .del-ch{min-width:28px;height:28px;border-radius:8px;border:1px solid var(--border);background:var(--panel-2);color:var(--muted);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .15s ease}
+.toc .del-ch:hover{background:linear-gradient(135deg,var(--accent),var(--accent-2));color:var(--on-accent);border-color:var(--accent)}
+
+/* Scroll principal derivado */
+.main::-webkit-scrollbar{width:10px;height:10px}
+.main::-webkit-scrollbar-track{background:var(--bg-2);border-radius:10px;border:1px solid var(--border)}
+.main::-webkit-scrollbar-thumb{background:linear-gradient(180deg,var(--accent),var(--accent-2));border-radius:10px;border:2px solid var(--bg-2)}
+.main::-webkit-scrollbar-thumb:hover{background:linear-gradient(180deg,var(--accent-hover-1),var(--accent-hover-2))}
+
+/* Autofill temático */
+input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:focus{
+  -webkit-text-fill-color: var(--text);
+  -webkit-box-shadow: 0 0 0 1000px var(--input-bg) inset;
+  transition: background-color 5000s ease-in-out 0s;
+}
+</style>
+<base target="_blank">
+</head>
+<body>
+<!-- TOOLBAR DE FORMATAÇÃO FLUTUANTE -->
+<div class="format-toolbar" id="formatToolbar" aria-label="Ferramentas de formatação">
+  <button type="button" data-cmd="bold" title="Negrito (Ctrl+B)" aria-pressed="false"><b>B</b></button>
+  <button type="button" data-cmd="italic" title="Itálico (Ctrl+I)" aria-pressed="false"><i>I</i></button>
+  <div class="sep"></div>
+  <button type="button" data-cmd="insertUnorderedList" title="Lista">•</button>
+  <button type="button" data-cmd="formatBlock" data-value="h1" title="Título">Título</button>
+  <button type="button" data-cmd="formatBlock" data-value="h2" title="Subtítulo">Subtítulo</button>
+  <button type="button" data-cmd="formatBlock" data-value="p" title="Texto">Texto</button>
+</div>
+
+<!-- STATUS DE SAVE -->
+<div class="save-status" id="saveStatus" aria-live="polite">Salvo</div>
+
+<!-- MOBILE TOPBAR -->
+<div class="topbar" style="display:none">
+  <button class="hamburger" id="btnHamb"></button>
+  <div style="font-weight:700">Caderno++</div>
+</div>
+
+<aside class="sidebar">
+  <div class="brand">
+    <div class="logo" style="width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,var(--accent),var(--accent-2));box-shadow:var(--shadow)"></div>
+    <h1 style="font-size:16px;margin:0;font-weight:700;letter-spacing:.2px">Caderno++</h1>
+  </div>
+
+  <!-- SELETOR DE CADERNO -->
+  <div class="notebook-selector">
+    <label>📓 Caderno Ativo</label>
+    <div class="notebook-controls">
+      <select id="notebookSelect"></select>
+      <button id="btnNewNotebook" title="Novo caderno">+</button>
+      <button id="btnRenameNotebook" title="Renomear caderno">✎</button>
+      <button id="btnDeleteNotebook" title="Excluir caderno">🗑</button>
+    </div>
+    <input type="text" id="newNotebookName" placeholder="Nome do novo caderno...">
+    <input type="text" id="renameNotebookName" placeholder="Renomear caderno...">
+    <div class="notebook-meta" id="notebookMeta"></div>
+  </div>
+
+  <div class="search"><input id="search" type="search" placeholder="Pesquisar capítulo…"/></div>
+  <div class="chapter-actions" style="margin:10px 0;"><button id="btnNewChapter" style="width:100%">+ Novo capítulo</button></div>
+  <ul class="toc"></ul>
+
+  <div class="controls exibicao" id="displayControls">
+    <label style="display:block;font-weight:700;margin-bottom:6px;">Exibição</label>
+    <div class="row">
+      <label style="display:flex;align-items:center;gap:8px;">
+        <input id="chkReadAlong" type="checkbox" checked />
+        <span>Leitura Acompanhada</span>
+      </label>
+    </div>
+    <div class="row" style="margin-top:8px;border-top:1px solid var(--border);padding-top:8px;">
+      <div class="small" style="margin-bottom:6px;">Camadas (globais)</div>
+      <label style="display:flex;align-items:center;gap:8px;">
+        <input id="chkTexto" type="checkbox" checked />
+        <span>Texto Principal</span>
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;">
+        <input id="chkResumo" type="checkbox" />
+        <span>Resumo</span>
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;">
+        <input id="chkPerguntasResp" type="checkbox" />
+        <span>Perguntas e Respostas</span>
+      </label>
+      <div class="hint">Títulos sempre aparecem. As camadas visíveis valem para todos os capítulos.</div>
+    </div>
+  </div>
+
+  <div class="controls" id="themeControls">
+    <label style="display:block;font-weight:700;margin-bottom:6px;">Cores</label>
+    <button id="btnTheme" class="theme-btn" style="background:linear-gradient(135deg,var(--accent),var(--accent-2));color:#0b0c10;font-weight:700;border:none;border-radius:10px;padding:8px 12px;cursor:pointer;width:100%;">Personalizar</button>
+    <div id="themePanel" class="theme-panel" data-hidden style="margin-top:10px;">
+      <div class="theme-grid"></div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <label for="voiceSelect">Narrador (PT)</label>
+    <select id="voiceSelect"></select>
+    <div class="row"><div class="small"><span>Velocidade</span><span id="rateVal">1.0</span></div><input id="rateRange" type="range" min="0.8" max="1.2" step="0.01" value="1.0" /></div>
+    <div class="row"><div class="small"><span>Timbre</span><span id="pitchVal">1.0</span></div><input id="pitchRange" type="range" min="0.8" max="1.2" step="0.01" value="1.0" /></div>
+    <div class="hint" id="voiceHint"></div>
+  </div>
+
+  <div class="controls" id="backupControls">
+    <label style="display:block;font-weight:700;margin-bottom:6px;">Backup</label>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button id="btnExport" style="flex:1;background:linear-gradient(135deg,var(--accent),var(--accent-2));color:var(--on-accent);border:none;border-radius:10px;padding:8px 12px;cursor:pointer;font-weight:700;">Exportar JSON</button>
+      <button id="btnExportMD" style="flex:1;background:var(--panel-2);color:var(--text);border:1px solid var(--border);border-radius:10px;padding:8px 12px;cursor:pointer;font-weight:600;">Exportar MD</button>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
+      <label for="inputImport" style="flex:1;display:inline-flex;align-items:center;justify-content:center;background:var(--panel-2);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:8px 12px;cursor:pointer;font-weight:600;">Importar
+        <input id="inputImport" type="file" accept="application/json" style="display:none" />
+      </label>
+    </div>
+    <div class="hint">JSON = Compartilha o Caderno. 
+	                  MD = Texto livre.</div>
+  </div>
+</aside>
+
+<main class="main">
+  <article class="article" id="mainArticle">
+    <section class="chapter" id="cap-ini">
+      <h1 data-placeholder="Clique para editar o título...">Meu Primeiro Caderno</h1>
+      <div class="layer-texto" data-placeholder="Clique aqui para começar a escrever...">
+        <p>Bem-vindo ao <b>Caderno++</b>! Este é um editor de estudos portátil que funciona 100% no navegador.</p>
+        <p><i>Clique em qualquer texto para editar.</i> Use a barra de ferramentas inferior para formatar.</p>
+        <ul>
+          <li>✅ Edição inline (clique e escreva)</li>
+          <li>✅ Formatação: negrito, itálico, listas</li>
+          <li>✅ Leitura em voz alta por capítulo (com destaque opcional)</li>
+          <li>✅ Múltiplos cadernos com temas diferentes</li>
+          <li>✅ Auto-save a cada mudança + Backup</li>
+          <li>✅ Exportação Markdown (texto livre!)</li>
+		  <li>✅ Sugestão: Antônio tem a voz mais natural</li>
+		  <li>✅ O Exportar JSON permite você compartilhar o seu caderno com outro user do Caderno++</li>
+		  <li>✅ Agora o Exportar MD (Markdown) permite que você compartilhe o conteúdo no Github, Notion, etc.</li>
+        </ul>
+      </div>
+      <div class="layer-resumo" data-placeholder="Clique para adicionar um resumo deste capítulo..."></div>
+      <div class="layer-perguntas-respostas" data-placeholder="Clique para adicionar perguntas e respostas de estudo..."></div>
+    </section>
+    <div class="footer">Caderno++ v1.0.0</div>
+  </article>
+</main>
+
+<script>
+// ==========================================
+// SEÇÃO 1: CONFIGURAÇÃO E ESTADO
+// ==========================================
+const FILE_BASENAME = (()=>{ try{ const nm = decodeURIComponent((location.pathname.split('/').pop()||'caderno').replace(/\.[^.]+$/,'')); return nm || 'caderno'; }catch(e){ return 'caderno'; }})();
+const APP_INSTANCE_ID='inst-19c8a5acd05-2a8a119a';
+const STORAGE_PREFIX='cadpp-'+FILE_BASENAME.toLowerCase()+'-'+APP_INSTANCE_ID;
+const NOTEBOOKS_KEY=`${STORAGE_PREFIX}-notebooks`;
+const ACTIVE_NOTEBOOK_KEY=`${STORAGE_PREFIX}-active`;
+let currentNotebookId=null; let notebooks={}; let saveTimeout=null; let isEditing=false; let savedRange=null;
+
+// ==========================================
+// SEÇÃO 2: UTILITÁRIOS
+// ==========================================
+function generateId(){return 'nb-'+Date.now().toString(36)+'-'+Math.random().toString(36).substr(2,5)}
+function showSaveStatus(m,e=false){const s=document.getElementById('saveStatus'); s.textContent=m; s.className='save-status visible'+(e?' error':' saved'); setTimeout(()=>s.classList.remove('visible'),1800)}
+function hexToRgb(hex){hex=String(hex||'').replace('#',''); if(hex.length===3) hex=[...hex].map(c=>c+c).join(''); const n=parseInt(hex,16); if(isNaN(n)) return null; return {r:(n>>16)&255,g:(n>>8)&255,b:n&255}}
+function sanitizeHTML(html){const tpl=document.createElement('template'); tpl.innerHTML=html; const dis=['SCRIPT','STYLE']; const w=document.createTreeWalker(tpl.content, NodeFilter.SHOW_ELEMENT, null); const rem=[]; while(w.nextNode()){const el=w.currentNode; if(dis.includes(el.tagName)){rem.push(el); continue;} [...el.attributes].forEach(a=>{const name=a.name.toLowerCase(); const val=(a.value||'').trim().toLowerCase(); if(name.startsWith('on')||val.startsWith('javascript:')) el.removeAttribute(a.name)});} rem.forEach(n=>n.remove()); return tpl.innerHTML}
+
+function updateDerivedColors(){const root=document.documentElement; const p2=getComputedStyle(root).getPropertyValue('--panel-2').trim(); const rgb=hexToRgb(p2)||{r:27,g:32,b:48}; root.style.setProperty('--panel-glass',`rgba(${rgb.r},${rgb.g},${rgb.b},0.38)`); const acc=getComputedStyle(root).getPropertyValue('--accent').trim(); const accRgb=hexToRgb(acc)||{r:106,g:176,b:255}; root.style.setProperty('--read-along-bg',`rgba(${accRgb.r},${accRgb.g},${accRgb.b},0.12)`); root.style.setProperty('--accent-ring',`rgba(${accRgb.r},${accRgb.g},${accRgb.b},0.25)`); root.style.setProperty('--input-bg',`rgba(${accRgb.r},${accRgb.g},${accRgb.b},0.08)`); root.style.setProperty('--input-border',`rgba(${accRgb.r},${accRgb.g},${accRgb.b},0.25)`)}
+
+// ==========================================
+// SEÇÃO 3: EXPORTAÇÃO MARKDOWN (sem dependências)
+// ==========================================
+function htmlToMarkdown(html) {
+  const div = document.createElement('div');
+  div.innerHTML = html;
+
+  let md = '';
+
+  // Processa cada capítulo
+  div.querySelectorAll('.chapter').forEach(chapter => {
+    // Título
+    const h1 = chapter.querySelector('h1');
+    if (h1) {
+      md += `# ${cleanText(h1.innerText)}\n\n`;
+    }
+
+    // Texto principal
+    const texto = chapter.querySelector('.layer-texto');
+    if (texto) {
+      md += elementsToMarkdown(texto) + '\n\n';
+    }
+
+    // Resumo (se existir e tiver conteúdo)
+    const resumo = chapter.querySelector('.layer-resumo');
+    if (resumo && resumo.innerText.trim()) {
+      md += `## Resumo\n\n${cleanText(resumo.innerText)}\n\n`;
+    }
+
+    // Perguntas (se existir e tiver conteúdo)
+    const perguntas = chapter.querySelector('.layer-perguntas-respostas');
+    if (perguntas && perguntas.innerText.trim()) {
+      md += `## Perguntas e Respostas\n\n${cleanText(perguntas.innerText)}\n\n`;
+    }
+
+    md += '---\n\n'; // Separador entre capítulos
+  });
+
+  return md.trim();
+}
+
+// Converte elementos internos para MD
+function elementsToMarkdown(container) {
+  let md = '';
+
+  container.childNodes.forEach(node => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      md += node.textContent;
+    } else if (node.nodeType === Node.ELEMENT_NODE) {
+      switch(node.tagName.toLowerCase()) {
+        case 'p':
+          md += cleanText(node.innerText) + '\n\n';
+          break;
+        case 'b':
+        case 'strong':
+          md += `**${cleanText(node.innerText)}**`;
+          break;
+        case 'i':
+        case 'em':
+          md += `*${cleanText(node.innerText)}*`;
+          break;
+        case 'ul':
+          node.querySelectorAll('li').forEach(li => {
+            md += `- ${cleanText(li.innerText)}\n`;
+          });
+          md += '\n';
+          break;
+        case 'br':
+          md += '\n';
+          break;
+        default:
+          md += cleanText(node.innerText);
+      }
+    }
+  });
+
+  return md.trim();
+}
+
+// Limpa texto (remove excesso de espaços, quebras)
+function cleanText(text) {
+  return text
+    .replace(/\s+/g, ' ')      // Múltiplos espaços → um
+    .replace(/\n\s*\n/g, '\n') // Múltiplas quebras → uma
+    .trim();
+}
+
+// Exporta caderno atual como Markdown
+function exportToMarkdown() {
+  const nb = notebooks[currentNotebookId];
+  if (!nb) return;
+
+  // Cria conteúdo MD com metadados no topo
+  const md = `---
+caderno: "${nb.name}"
+tema: "${nb.theme}"
+criado: ${new Date(nb.created).toISOString()}
+modificado: ${new Date(nb.modified).toISOString()}
+---
+
+${htmlToMarkdown(nb.content)}
+
+---
+*Exportado do Caderno++ v2.3.4*
+`;
+
+  // Download
+  const blob = new Blob([md], { type: 'text/markdown' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `${nb.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.md`;
+  a.click();
+
+  showSaveStatus('Exportado como Markdown ✓');
+}
+
+// ==========================================
+// SEÇÃO 4: TEMAS E CORES
+// ==========================================
+const THEMES={
+ 'Roxo/Azul':{
+   '--bg':'#0a0a12','--bg-2':'#070710','--panel':'#12121f','--panel-2':'#1a1a2e',
+   '--text':'#e8e8ff','--muted':'#a0a0c0','--heading-2':'#d0d0f0','--heading-3':'#b8b8e8',
+   '--border':'#2a2a45','--code-bg':'#080810',
+   '--accent':'#5a8aff','--accent-2':'#a855f7',
+   '--accent-hover-1':'#7aa5ff','--accent-hover-2':'#c77dff','--on-accent':'#0a0a12'
+ },
+ 'Rosa':{
+   '--bg':'#110910','--bg-2':'#0c060b','--panel':'#180f17','--panel-2':'#1e131f',
+   '--text':'#f6eaf3','--muted':'#d7b4cb','--heading-2':'#ffd7ef','--heading-3':'#ffc0e6',
+   '--border':'#3a243b','--code-bg':'#100810',
+   '--accent':'#ff6aa9','--accent-2':'#ff7ae8',
+   '--accent-hover-1':'#ffa3c7','--accent-hover-2':'#ffc0f0','--on-accent':'#0b0c10'
+ },
+ 'Vermelho':{
+   '--bg':'#12090a','--bg-2':'#0d0606','--panel':'#1a0f10','--panel-2':'#221314',
+   '--text':'#f3eaea','--muted':'#d9b2b2','--heading-2':'#ffd6d6','--heading-3':'#ffc0c0',
+   '--border':'#3b2426','--code-bg':'#100808',
+   '--accent':'#ff6b6b','--accent-2':'#ff4757',
+   '--accent-hover-1':'#ff8e8e','--accent-hover-2':'#ff6b7a','--on-accent':'#0b0c10'
+ },
+ 'Amarelo':{
+   '--bg':'#1c1810','--bg-2':'#14120c','--panel':'#282218','--panel-2':'#322a20',
+   '--text':'#f5f0e0','--muted':'#b8a880','--heading-2':'#e8dcc0','--heading-3':'#ddd0b0',
+   '--border':'#4a4030','--code-bg':'#1c1810',
+   '--accent':'#f0d080','--accent-2':'#e0c060',
+   '--accent-hover-1':'#f5e0a0','--accent-hover-2':'#f0d580','--on-accent':'#1c1810'
+ },
+ 'Verde':{
+   '--bg':'#0d1410','--bg-2':'#090f0b','--panel':'#151f18','--panel-2':'#1c2920',
+   '--text':'#e0ebe4','--muted':'#8a9a8f','--heading-2':'#c8ddd0','--heading-3':'#b8d4c0',
+   '--border':'#2a3d32','--code-bg':'#0d1410',
+   '--accent':'#7ab89a','--accent-2':'#6aaa8a',
+   '--accent-hover-1':'#8ac8aa','--accent-hover-2':'#9ad8ba','--on-accent':'#0b0c10'
+ },
+ 'Preto/Cinza':{
+   '--bg':'#0b0c0f','--bg-2':'#08090b','--panel':'#121317','--panel-2':'#171a21',
+   '--text':'#e7eaef','--muted':'#b3bac6','--heading-2':'#edf2ff','--heading-3':'#dbe3f4',
+   '--border':'#2a2f3a','--code-bg':'#0a0b0e',
+   '--accent':'#9aa4b2','--accent-2':'#cbd5e1',
+   '--accent-hover-1':'#b3bdca','--accent-hover-2':'#dee6ef','--on-accent':'#0b0c10'
+ }
+};
+
+function applyTheme(n){const vars=THEMES[n]; if(!vars) return; const root=document.documentElement; Object.entries(vars).forEach(([k,v])=>root.style.setProperty(k,v)); updateDerivedColors(); if(currentNotebookId){ notebooks[currentNotebookId].theme=n; saveNotebooks(); updateNotebookMeta(); }}
+function buildThemePanel(){const g=document.querySelector('.theme-grid'); if(!g) return; g.innerHTML=''; Object.keys(THEMES).forEach(n=>{const v=THEMES[n]; const b=document.createElement('button'); b.className='theme-chip'; b.innerHTML=`<span class="swatch" style="background:linear-gradient(135deg, ${v['--accent']}, ${v['--accent-2']});"></span><span class="label">${n}</span>`; b.addEventListener('click',()=>applyTheme(n)); g.appendChild(b);});}
+
+// ==========================================
+// SEÇÃO 5: GERENCIAMENTO DE CADERNOS
+// ==========================================
+function initNotebooks(){const saved=localStorage.getItem(NOTEBOOKS_KEY); const active=localStorage.getItem(ACTIVE_NOTEBOOK_KEY); if(saved){ notebooks=JSON.parse(saved);} else {const id=generateId(); notebooks[id]={id,name:'Meu Primeiro Caderno',theme:'Roxo/Azul',created:Date.now(),modified:Date.now(),content:document.getElementById('mainArticle').innerHTML,prefs:{showTexto:true,showResumo:false,showPerguntasResp:false,readAlong:true,voice:null,rate:1,pitch:1}}; currentNotebookId=id; saveNotebooks(); } if(active && notebooks[active]) currentNotebookId=active; else currentNotebookId=Object.keys(notebooks)[0]; renderNotebookSelector(); loadCurrentNotebook(); }
+function saveNotebooks(){try{localStorage.setItem(NOTEBOOKS_KEY, JSON.stringify(notebooks)); localStorage.setItem(ACTIVE_NOTEBOOK_KEY,currentNotebookId); showSaveStatus('Salvo ✓');}catch(e){showSaveStatus('Erro ao salvar!',true);}}
+function createNotebook(name){const id=generateId(); const now=Date.now(); const tpl=`\n<section class=\"chapter\" id=\"cap-${now}\">\n  <h1 data-placeholder=\"Clique para editar o título...\">${name}</h1>\n  <div class=\"layer-texto\" data-placeholder=\"Comece a escrever aqui...\"><p>Novo caderno criado em ${(new Date()).toLocaleDateString('pt-BR')}.</p></div>\n  <div class=\"layer-resumo\" data-placeholder=\"Adicione um resumo...\"></div>\n  <div class=\"layer-perguntas-respostas\" data-placeholder=\"Adicione perguntas de estudo...\"></div>\n</section>\n<div class=\"footer\">Caderno++</div>`; notebooks[id]={id,name,theme:'Roxo/Azul',created:now,modified:now,content:tpl,prefs:{showTexto:true,showResumo:false,showPerguntasResp:false,readAlong:true,voice:null,rate:1,pitch:1}}; currentNotebookId=id; saveNotebooks(); renderNotebookSelector(); loadCurrentNotebook(); showSaveStatus('Novo caderno criado');}
+function renameCurrentNotebook(newName){ if(!currentNotebookId) return; if(!newName || !newName.trim()) return; notebooks[currentNotebookId].name=newName.trim(); notebooks[currentNotebookId].modified=Date.now(); saveNotebooks(); renderNotebookSelector(); document.getElementById('notebookSelect').value=currentNotebookId; updateNotebookMeta(); showSaveStatus('Caderno renomeado ✓'); }
+function deleteCurrentNotebook(){ if(Object.keys(notebooks).length<=1){alert('Você precisa manter pelo menos um caderno!'); return;} if(!confirm(`Excluir "${notebooks[currentNotebookId].name}"? Esta ação não pode ser desfeita.`)) return; delete notebooks[currentNotebookId]; currentNotebookId=Object.keys(notebooks)[0]; saveNotebooks(); renderNotebookSelector(); loadCurrentNotebook(); showSaveStatus('Caderno excluído'); }
+function switchNotebook(id){ if(id===currentNotebookId) return; saveCurrentContent(); currentNotebookId=id; localStorage.setItem(ACTIVE_NOTEBOOK_KEY,id); loadCurrentNotebook(); }
+function saveCurrentContent(){ if(!currentNotebookId) return; const art=document.getElementById('mainArticle'); const safe=sanitizeHTML(art.innerHTML); notebooks[currentNotebookId].content=safe; notebooks[currentNotebookId].modified=Date.now(); const p=getLayerPrefs(); notebooks[currentNotebookId].prefs={...p, voice:getSelectedVoiceName(), rate:getRate(), pitch:getPitch()}; saveNotebooks(); }
+function loadCurrentNotebook(){ const nb=notebooks[currentNotebookId]; if(!nb) return; document.getElementById('mainArticle').innerHTML=nb.content; applyTheme(nb.theme); document.getElementById('notebookSelect').value=currentNotebookId; updateNotebookMeta(); rebuildTOC(); initEditing(); initTTS(); applyLayerPrefs(); updateVoiceUIFromPrefs(); }
+function updateNotebookMeta(){ const nb=notebooks[currentNotebookId]; const meta=document.getElementById('notebookMeta'); const date=new Date(nb.modified).toLocaleString('pt-BR'); meta.textContent=`Modificado: ${date} • Tema: ${nb.theme}`; }
+function renderNotebookSelector(){ const s=document.getElementById('notebookSelect'); s.innerHTML=''; Object.values(notebooks).forEach(nb=>{ const o=document.createElement('option'); o.value=nb.id; o.textContent=nb.name; s.appendChild(o); }); s.value=currentNotebookId; }
+
+// ==========================================
+// SEÇÃO 6: EDIÇÃO E FORMATAÇÃO
+// ==========================================
+const EDITABLE_SELECTOR='h1, h2, h3, p, li, .layer-texto, .layer-resumo, .layer-perguntas-respostas';
+function initEditing(){ const art=document.getElementById('mainArticle'); art.removeEventListener('click', onEditableClick); art.removeEventListener('input', onEditableInput, true); art.removeEventListener('keydown', onEditableKeydown, true); art.removeEventListener('blur', onEditableBlur, true); art.addEventListener('click', onEditableClick); art.addEventListener('input', onEditableInput, true); art.addEventListener('keydown', onEditableKeydown, true); art.addEventListener('blur', onEditableBlur, true); document.removeEventListener('selectionchange', onSelectionChange); document.addEventListener('selectionchange', onSelectionChange); }
+function nearestEditable(el){return el.closest(EDITABLE_SELECTOR)}
+function onSelectionChange(){ const ae=document.activeElement; if(ae && ae.isContentEditable){ const sel=window.getSelection(); if(sel && sel.rangeCount>0){ savedRange=sel.getRangeAt(0);} } updateToolbarState(); }
+function restoreSelection(){ if(!savedRange) return; const sel=window.getSelection(); sel.removeAllRanges(); sel.addRange(savedRange); }
+function onEditableClick(e){const t=nearestEditable(e.target); if(!t) return; if(window.getSelection().toString().length>0 && t.isContentEditable) return; if(!t.isContentEditable){ t.contentEditable=true; t.focus(); } isEditing=true; document.getElementById('formatToolbar').classList.add('visible'); }
+function onEditableBlur(e){const t=nearestEditable(e.target); if(!t) return; t.contentEditable=false; isEditing=false; setTimeout(()=>{ if(!isEditing){ document.getElementById('formatToolbar').classList.remove('visible'); } },200); triggerAutoSave(); if(t.tagName==='H1'){ rebuildTOC(); } }
+function onEditableInput(e){ const el=nearestEditable(e.target); if(!el) return; clearTimeout(saveTimeout); saveTimeout=setTimeout(()=>{ saveCurrentContent(); updateNotebookMeta(); },800); if(el.tagName==='H1'){ rebuildTOC(); } }
+function onEditableKeydown(e){ const t=nearestEditable(e.target); if(!t) return; if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==='s'){ e.preventDefault(); saveCurrentContent(); showSaveStatus('Salvo manualmente ✓'); } if(e.key==='Enter' && !e.shiftKey && ['H1','H2','H3'].includes(t.tagName)){ e.preventDefault(); const p=document.createElement('p'); p.textContent=''; p.dataset.placeholder='Digite aqui...'; t.after(p); p.contentEditable=true; p.focus(); } }
+function initFormatToolbar(){ const tb=document.getElementById('formatToolbar'); tb.querySelectorAll('button[data-cmd]').forEach(btn=>{ btn.addEventListener('mousedown',e=>e.preventDefault()); btn.addEventListener('click',e=>{ e.preventDefault(); const cmd=btn.dataset.cmd; let val=btn.dataset.value||null; if(cmd==='formatBlock'&&val){ val=`<${val.toLowerCase()}>`; } if(window.getSelection){ restoreSelection(); } document.execCommand(cmd,false,val); const active=document.activeElement; if(active && active.isContentEditable){ active.focus(); } updateToolbarState(); triggerAutoSave(); }); }); }
+function updateToolbarState(){ document.querySelectorAll('#formatToolbar button[data-cmd]').forEach(btn=>{ const cmd=btn.dataset.cmd; if(document.queryCommandState(cmd)) btn.classList.add('active'); else btn.classList.remove('active'); }); }
+function triggerAutoSave(){ clearTimeout(saveTimeout); saveTimeout=setTimeout(()=>{ saveCurrentContent(); updateNotebookMeta(); },500); }
+
+// ==========================================
+// SEÇÃO 7: TTS E ÁUDIO (com leitura acompanhada fix)
+// ==========================================
+function getRate(){ return parseFloat(document.getElementById('rateRange')?.value||'1'); }
+function getPitch(){ return parseFloat(document.getElementById('pitchRange')?.value||'1'); }
+function getSelectedVoiceName(){ const s=document.getElementById('voiceSelect'); return s?.value||null; }
+function getSelectedVoice(){ const name=getSelectedVoiceName(); const voices=window.speechSynthesis.getVoices().filter(v=> v.lang && v.lang.toLowerCase().startsWith('pt')); if(!voices.length) return null; if(name){ const v=voices.find(v=> v.name===name); if(v) return v; } return voices[0]; }
+function updateVoiceHint(){ const h=document.getElementById('voiceHint'); const v=getSelectedVoice(); h.textContent = v ? `Voz: ${v.name} (${v.lang})` : 'Nenhuma voz PT encontrada.'; }
+
+// Limpa todos os destaques de leitura
+function clearAllReadAlongHighlights(){ document.querySelectorAll('.read-along-active').forEach(el=> el.classList.remove('read-along-active')); }
+
+function loadVoices(){ const voices=window.speechSynthesis.getVoices(); const pt=voices.filter(v=> v.lang && v.lang.toLowerCase().startsWith('pt')); const s=document.getElementById('voiceSelect'); if(!s) return; const prev=getSelectedVoiceName() || notebooks[currentNotebookId]?.prefs?.voice || null; s.innerHTML=''; pt.forEach(v=>{ const o=document.createElement('option'); o.value=v.name; o.textContent=`${v.name} (${v.lang})`; s.appendChild(o); }); if(prev){ const m=pt.find(v=> v.name===prev); if(m) s.value=prev; } updateVoiceHint(); }
+
+function chapterTextForTTS(ch){ const parts=[]; ch.querySelectorAll('h1, h2, p, li').forEach(el=>{ const t=el.innerText.trim(); if(t) parts.push(t); }); return parts.join('\n'); }
+
+function speakChapterWithHighlight(ch){ 
+  const doHL=document.getElementById('chkReadAlong')?.checked; 
+  // Se não tem leitura acompanhada, não faz nada de highlight
+  if(!doHL) return; 
+
+  const rate=getRate(); 
+  const pitch=getPitch(); 
+  const voice=getSelectedVoice(); 
+  window.speechSynthesis.cancel(); 
+  clearAllReadAlongHighlights();
+
+  const nodes=[...ch.querySelectorAll('h1, h2, p, li')]; 
+  const sentences=[]; 
+  nodes.forEach(n=>{ 
+    const parts=(n.innerText||'').split(/(?<=[.!?])\s+/).filter(Boolean); 
+    parts.forEach(txt=> sentences.push({ node:n, text:txt })); 
+  }); 
+  if(!sentences.length) return; 
+
+  sentences.forEach((s,idx)=>{ 
+    const u=new SpeechSynthesisUtterance(s.text); 
+    if(voice) u.voice=voice; 
+    u.rate=rate; 
+    u.pitch=pitch; 
+    u.onstart=()=>{ 
+      if(doHL){ 
+        clearAllReadAlongHighlights();
+        s.node.classList.add('read-along-active'); 
+      } 
+    }; 
+    u.onend=()=>{ 
+      if(doHL){ 
+        s.node.classList.remove('read-along-active'); 
+      } 
+    }; 
+    window.speechSynthesis.speak(u); 
+  }); 
+}
+
+function initTTS(){ 
+  document.querySelectorAll('.chapter-toolbar').forEach(tb=>tb.remove()); 
+  document.querySelectorAll('.chapter').forEach(ch=>{ 
+    const tb=document.createElement('div'); 
+    tb.className='chapter-toolbar'; 
+    const p=document.createElement('button'); 
+    p.textContent='▶ Ler'; 
+    const st=document.createElement('button'); 
+    st.textContent='⏹ Parar'; 
+    st.className='secondary'; 
+    const s=document.createElement('span'); 
+    s.className='status'; 
+    tb.append(p,st,s); 
+    const h1=ch.querySelector('h1'); 
+    if(h1) ch.insertBefore(tb,h1); 
+
+    p.addEventListener('click',()=>{ 
+      if(window.speechSynthesis.speaking) window.speechSynthesis.cancel(); 
+
+      const doHL = document.getElementById('chkReadAlong')?.checked;
+
+      // Se não tem leitura acompanhada, limpa qualquer highlight residual
+      if(!doHL) {
+        clearAllReadAlongHighlights();
+      }
+
+      s.textContent='Lendo...'; 
+
+      if(doHL){ 
+        speakChapterWithHighlight(ch); 
+      } else { 
+        const text=chapterTextForTTS(ch); 
+        const u=new SpeechSynthesisUtterance(text); 
+        const v=getSelectedVoice(); 
+        if(v) u.voice=v; 
+        u.rate=getRate(); 
+        u.pitch=getPitch(); 
+        u.onstart=()=> s.textContent='Lendo...'; 
+        u.onend=()=> { 
+          s.textContent='Concluído'; 
+          clearAllReadAlongHighlights();
+        }; 
+        window.speechSynthesis.speak(u); 
+      } 
+    }); 
+
+    st.addEventListener('click',()=>{ 
+      window.speechSynthesis.cancel(); 
+      clearAllReadAlongHighlights();
+      s.textContent='Parado'; 
+    }); 
+  }); 
+}
+
+function updateVoiceUIFromPrefs(){ const p=getLayerPrefs(); const sel=document.getElementById('voiceSelect'); if(p.voice && sel){ sel.value=p.voice; } document.getElementById('rateRange').value=(p.rate||1); document.getElementById('pitchRange').value=(p.pitch||1); document.getElementById('rateVal').textContent=String(p.rate||1); document.getElementById('pitchVal').textContent=String(p.pitch||1); updateVoiceHint(); }
+
+// ==========================================
+// SEÇÃO 8: UI, CAMADAS, NAVEGAÇÃO
+// ==========================================
+function getLayerPrefs(){ const nb=notebooks[currentNotebookId]; if(!nb.prefs){ nb.prefs={showTexto:true,showResumo:false,showPerguntasResp:false,readAlong:true,voice:null,rate:1,pitch:1}; } return nb.prefs; }
+
+function applyLayerPrefs(){ 
+  const {showTexto,showResumo,showPerguntasResp,readAlong}=getLayerPrefs(); 
+  const chkT=document.getElementById('chkTexto'); 
+  const chkR=document.getElementById('chkResumo'); 
+  const chkP=document.getElementById('chkPerguntasResp'); 
+  const chkRead=document.getElementById('chkReadAlong'); 
+
+  if(chkT){ 
+    chkT.checked=!!showTexto; 
+    document.querySelectorAll('.layer-texto').forEach(el=> el.style.display=showTexto?'':'none'); 
+  } 
+  if(chkR){ 
+    chkR.checked=!!showResumo; 
+    document.querySelectorAll('.layer-resumo').forEach(el=> el.style.display=showResumo?'':'none'); 
+  } 
+  if(chkP){ 
+    chkP.checked=!!showPerguntasResp; 
+    document.querySelectorAll('.layer-perguntas-respostas').forEach(el=> el.style.display=showPerguntasResp?'':'none'); 
+  } 
+  if(chkRead){ 
+    chkRead.checked=!!readAlong; 
+  } 
+}
+
+function bindLayerToggles(){ 
+  ['chkTexto','chkResumo','chkPerguntasResp','chkReadAlong'].forEach(id=>{ 
+    document.getElementById(id)?.addEventListener('change', ()=>{ 
+      const p=getLayerPrefs(); 
+      p.showTexto=document.getElementById('chkTexto').checked; 
+      p.showResumo=document.getElementById('chkResumo').checked; 
+      p.showPerguntasResp=document.getElementById('chkPerguntasResp').checked; 
+      p.readAlong=document.getElementById('chkReadAlong').checked; 
+
+      // Se desmarcou leitura acompanhada, limpa highlights
+      if(!p.readAlong) {
+        clearAllReadAlongHighlights();
+      }
+
+      saveNotebooks(); 
+      applyLayerPrefs(); 
+    }); 
+  }); 
+}
+
+function ensureChapterIds(){ document.querySelectorAll('.chapter').forEach((ch,i)=>{ if(!ch.id){ const base=(ch.querySelector('h1')?.textContent||'capitulo').trim().toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9\-]/g,'').slice(0,40) || ('cap-'+Date.now()); ch.id=base || ('cap-'+Date.now()); } }); }
+function deleteChapterById(id){ const chapters=document.querySelectorAll('.chapter'); if(chapters.length<=1){ alert('Mantenha pelo menos um capítulo.'); return; } const ch=document.getElementById(id); if(!ch) return; if(!confirm('Excluir este capítulo?')) return; ch.remove(); rebuildTOC(); saveCurrentContent(); }
+function rebuildTOC(){ const toc=document.querySelector('.toc'); if(!toc) return; toc.innerHTML=''; ensureChapterIds(); const chapters=[...document.querySelectorAll('.chapter h1')]; chapters.forEach((h1,idx)=>{ const ch=h1.closest('.chapter'); const id=ch.id; const title=(h1.textContent||'Capítulo sem título').trim(); const a=document.createElement('a'); a.href='#'+id; a.innerHTML=`<span class="badge" aria-hidden="true"></span> <span>${title}</span>`; const li=document.createElement('li'); const btn=document.createElement('button'); btn.className='del-ch'; btn.setAttribute('title','Excluir capítulo'); btn.setAttribute('aria-label','Excluir capítulo'); btn.textContent='×'; btn.addEventListener('click',(e)=>{ e.preventDefault(); deleteChapterById(id); }); li.appendChild(a); li.appendChild(btn); toc.appendChild(li); a.addEventListener('click',(e)=>{ e.preventDefault(); document.getElementById(id)?.scrollIntoView({behavior:'smooth',block:'start'}); }); }); }
+function addChapter(){ const id='cap-'+Date.now(); const s=document.createElement('section'); s.className='chapter'; s.id=id; s.innerHTML=`\n  <h1 data-placeholder=\"Clique para editar o título...\">Novo Capítulo</h1>\n  <div class=\"layer-texto\" data-placeholder=\"Clique aqui para começar a escrever...\"><p>Comece a escrever seu conteúdo aqui...</p></div>\n  <div class=\"layer-resumo\" data-placeholder=\"Clique para adicionar um resumo deste capítulo...\"></div>\n  <div class=\"layer-perguntas-respostas\" data-placeholder=\"Clique para adicionar perguntas e respostas de estudo...\"></div>\n`; const f=document.querySelector('.footer'); document.getElementById('mainArticle').insertBefore(s,f); initEditing(); initTTS(); rebuildTOC(); saveCurrentContent(); s.scrollIntoView({ behavior:'smooth', block:'start' }); }
+
+function initEventListeners(){
+  document.getElementById('btnNewNotebook')?.addEventListener('click', ()=>{ const input=document.getElementById('newNotebookName'); input.style.display = input.style.display === 'none' ? 'block' : 'none'; if(input.style.display==='block'){ input.value=''; input.focus(); } });
+  document.getElementById('newNotebookName')?.addEventListener('keypress', (e)=>{ if(e.key==='Enter' && e.target.value.trim()){ createNotebook(e.target.value.trim()); e.target.value=''; e.target.style.display='none'; } });
+  document.getElementById('btnRenameNotebook')?.addEventListener('click', ()=>{ const input=document.getElementById('renameNotebookName'); input.style.display = input.style.display === 'none' ? 'block' : 'none'; if(input.style.display==='block'){ input.value = notebooks[currentNotebookId]?.name || ''; input.focus(); input.select(); } });
+  const rn=document.getElementById('renameNotebookName'); rn?.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ renameCurrentNotebook(e.target.value); e.target.style.display='none'; } else if(e.key==='Escape'){ e.target.style.display='none'; } }); rn?.addEventListener('blur', (e)=>{ if(e.target.value.trim()){ renameCurrentNotebook(e.target.value); } e.target.style.display='none'; });
+  document.getElementById('btnDeleteNotebook')?.addEventListener('click', deleteCurrentNotebook);
+  document.getElementById('notebookSelect')?.addEventListener('change', (e)=> switchNotebook(e.target.value));
+  document.getElementById('btnNewChapter')?.addEventListener('click', addChapter);
+  document.getElementById('btnTheme')?.addEventListener('click', ()=>{ const panel=document.getElementById('themePanel'); panel?.toggleAttribute('data-hidden'); });
+  document.getElementById('search')?.addEventListener('input', (e)=>{ const q=e.target.value.toLowerCase(); document.querySelectorAll('.toc li').forEach(li=>{ li.style.display = li.textContent.toLowerCase().includes(q) ? '' : 'none'; }); });
+  const rateRange=document.getElementById('rateRange'); const pitchRange=document.getElementById('pitchRange'); if(rateRange){ rateRange.addEventListener('input', ()=>{ document.getElementById('rateVal').textContent=rateRange.value; triggerAutoSave(); }); }
+  if(pitchRange){ pitchRange.addEventListener('input', ()=>{ document.getElementById('pitchVal').textContent=pitchRange.value; triggerAutoSave(); }); }
+  document.getElementById('voiceSelect')?.addEventListener('change', ()=>{ const p=getLayerPrefs(); p.voice = getSelectedVoiceName(); updateVoiceHint(); saveNotebooks(); });
+  document.getElementById('btnExport')?.addEventListener('click', exportNotebooks);
+  document.getElementById('btnExportMD')?.addEventListener('click', exportToMarkdown);
+  document.getElementById('inputImport')?.addEventListener('change', (e)=>{ const file=e.target.files?.[0]; if(file) importNotebooks(file); });
+  const hb=document.getElementById('btnHamb'); const sidebar=document.querySelector('.sidebar'); hb?.addEventListener('click', ()=> sidebar.classList.toggle('open'));
+}
+
+function initMobileTopbar(){ const topbar=document.querySelector('.topbar'); if(window.matchMedia('(max-width: 980px)').matches){ topbar.style.display=''; } }
+
+// ==========================================
+// SEÇÃO 9: BACKUP
+// ==========================================
+function exportNotebooks(){ const blob = new Blob([JSON.stringify({ notbs:notebooks, active:currentNotebookId }, null, 2)], { type:'application/json' }); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='caderno_pp_backup.json'; a.click(); }
+function importNotebooks(file){ const reader=new FileReader(); reader.onload=()=>{ try{ const { notbs, active } = JSON.parse(reader.result); if(notbs && typeof notbs==='object'){ notebooks = notbs; currentNotebookId = (active && notbs[active]) ? active : Object.keys(notbs)[0]; saveNotebooks(); renderNotebookSelector(); loadCurrentNotebook(); showSaveStatus('Backup importado ✓'); } }catch{ showSaveStatus('Falha ao importar', true); } }; reader.readAsText(file); }
+
+// ==========================================
+// SEÇÃO 10: INICIALIZAÇÃO
+// ==========================================
+document.addEventListener('DOMContentLoaded', ()=>{ 
+  initNotebooks(); 
+  initEditing(); 
+  initFormatToolbar(); 
+  bindLayerToggles(); 
+  initEventListeners(); 
+  buildThemePanel(); 
+  updateDerivedColors(); 
+  initMobileTopbar(); 
+
+  try{ 
+    const mainArt=document.getElementById('mainArticle'); 
+    const mo=new MutationObserver((muts)=>{ 
+      for(const m of muts){ 
+        if([...m.addedNodes].some(n=> n.nodeType===1 && n.classList?.contains('chapter')) || 
+           [...m.removedNodes].some(n=> n.nodeType===1 && n.classList?.contains('chapter'))){ 
+          rebuildTOC(); 
+          break; 
+        } 
+      } 
+    }); 
+    mo.observe(mainArt,{childList:true,subtree:false}); 
+  }catch{}
+
+  window.speechSynthesis.onvoiceschanged = ()=>{ 
+    loadVoices(); 
+    updateVoiceUIFromPrefs(); 
+  }; 
+  loadVoices(); 
+  updateVoiceUIFromPrefs(); 
+
+  document.addEventListener('keydown', (e)=>{ 
+    if((e.ctrlKey||e.metaKey) && e.key==='s'){ 
+      e.preventDefault(); 
+      saveCurrentContent(); 
+      showSaveStatus('Salvo ✓'); 
+    } 
+  }); 
+
+  window.addEventListener('beforeunload', ()=> saveCurrentContent()); 
+});
+</script>
+</body>
+</html>
