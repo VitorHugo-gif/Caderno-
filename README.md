@@ -4,7 +4,7 @@
 > Edição inline, TTS com leitura acompanhada, camadas **Texto / Resumo / P&R**, múltiplos cadernos com temas, **Exportar Markdown** e **Backup/Import JSON**.
 ---
 
-## ✨ Destaques
+##  Destaques
 
 - ✅ **Sem instalações**: um único `Caderno++.html` abre direto no **Chrome/Edge** e funciona totalmente local, sem bibliotecas externas.  
 - ✅ **Edição inline** com barra de formatação (negrito, itálico, lista, título/subtítulo).  
@@ -15,11 +15,11 @@
 - ✅ **Exportar Markdown** nativo (inclui *front‑matter* com metadados do caderno).  
 - ✅ **Busca** por capítulos na sidebar e **TOC** clicável com rolagem suave.
 
-> 💡 **Importante:** não renomeie o arquivo `Caderno++.html`. O app usa o **nome do arquivo** para montar a chave do armazenamento local; se renomear, parecerá que suas notas “sumiram” (ficam em outra chave). Mantenha o nome para não confundir o `localStorage`.
+>  **Importante:** não renomeie o arquivo `Caderno++.html`. O app usa o **nome do arquivo** para montar a chave do armazenamento local; se renomear, parecerá que suas notas “sumiram” (ficam em outra chave). Mantenha o nome para não confundir o `localStorage`.
 
 ---
 
-## 🧪 Uso rápido
+##  Uso rápido
 
 1. Baixe/clique em `Caderno++.html`.  
 2. O app abre no navegador e já vem com um capítulo de exemplo.  
@@ -30,7 +30,7 @@
 
 ---
 
-## 🚀 Como usar
+##  Como usar
 
 ### 1) Organização em **Cadernos** e **Capítulos**
 - Na sidebar, escolha o **Caderno Ativo** (select) ou crie um novo (**+**).  
@@ -66,7 +66,7 @@ Ligue/desligue globalmente em **Exibição → Camadas** (valem para todos os ca
 
 ---
 
-## 💾 Exportar / Importar
+##  Exportar / Importar
 
 ### Exportar **JSON** (backup do caderno)
 - **Exportar JSON** baixa um arquivo com **todos os cadernos** + **caderno ativo**.  
